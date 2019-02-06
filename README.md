@@ -25,6 +25,12 @@ In this setup, the directory `/var/lib/local-zfs-provisioner` will be used acros
 kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/deploy/local-zfs-provisioner.yaml
 ```
 
+Create a suitable configmap and add it to the cluster. You will have to change this to work
+with your zfs pools and datasets.
+
+```
+kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/deploy/example-config.yaml
+```
 
 ## Usage
 
@@ -34,8 +40,6 @@ Create a `hostPath` backed Persistent Volume and a pod uses it:
 kubectl create -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pvc.yaml
 kubectl create -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
 ```
-
-TODO: examples of `kubectl get pv*` invocations.
 
 You should see the PV has been created:
 ```
