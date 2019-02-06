@@ -151,6 +151,7 @@ kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisione
 ## License
 
 Copyright (c) 2014-2018  [Rancher Labs, Inc.](http://rancher.com/)
+
 Copyright (c) 2019 Steven Armstrong
 
 Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License. You may obtain a copy of the License at
