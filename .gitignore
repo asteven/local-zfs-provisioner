@@ -4,6 +4,9 @@
 *.dll
 *.so
 *.dylib
+local-zfs-provisioner
+/off
+/tmp
 
 # Test binary, build with `go test -c`
 *.test
