@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"strings"
+	"strconv"
 	"sync"
 	"time"
 
@@ -14,15 +14,16 @@ import (
 	"github.com/pkg/errors"
 
 	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
-	//pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	//pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+
+	zfs "github.com/mistifyio/go-zfs"
 )
 
 const (
-	KeyNode     = "kubernetes.io/hostname"
-	DockerImage = "asteven/local-zfs-provisioner:v0.0.1"
+	KeyNode = "kubernetes.io/hostname"
 
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
 )
@@ -34,10 +35,11 @@ var (
 )
 
 type LocalZFSProvisioner struct {
-	stopCh     chan struct{}
-	kubeClient *clientset.Clientset
-	namespace  string
-	nodeName   string
+	stopCh          chan struct{}
+	kubeClient      *clientset.Clientset
+	datasetMountDir string
+	namespace       string
+	nodeName        string
 
 	config      *Config
 	configData  *ConfigData
@@ -46,9 +48,8 @@ type LocalZFSProvisioner struct {
 }
 
 type NodeDatasetMapData struct {
-	Node  string   `json:"node,omitempty"`
+	Node    string `json:"node,omitempty"`
 	Dataset string `json:"dataset,omitempty"`
-	MountPoint string `json:"mountPoint,omitempty"`
 }
 
 type ConfigData struct {
@@ -57,20 +58,20 @@ type ConfigData struct {
 
 type NodeDatasetMap struct {
 	Dataset string
-	MountPoint string
 }
 
 type Config struct {
 	NodeDatasetMap map[string]*NodeDatasetMap
 }
 
-func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile, namespace string, nodeName string) (*LocalZFSProvisioner, error) {
+func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile string, datasetMountDir string, namespace string, nodeName string) (*LocalZFSProvisioner, error) {
 	p := &LocalZFSProvisioner{
 		stopCh: stopCh,
 
-		kubeClient: kubeClient,
-		namespace:  namespace,
-		nodeName:   nodeName,
+		kubeClient:      kubeClient,
+		datasetMountDir: datasetMountDir,
+		namespace:       namespace,
+		nodeName:        nodeName,
 
 		// config will be updated shortly by p.refreshConfig()
 		config:      nil,
@@ -130,12 +131,12 @@ func (p *LocalZFSProvisioner) watchAndRefreshConfig() {
 	}()
 }
 
-func (p *LocalZFSProvisioner) getNodeDatasetMap(nodeName string) (string, error) {
+func (p *LocalZFSProvisioner) getNodeDatasetMap(nodeName string) (*NodeDatasetMap, error) {
 	p.configMutex.RLock()
 	defer p.configMutex.RUnlock()
 
 	if p.config == nil {
-		return "", fmt.Errorf("no valid config available")
+		return nil, fmt.Errorf("no valid config available")
 	}
 
 	c := p.config
@@ -143,15 +144,28 @@ func (p *LocalZFSProvisioner) getNodeDatasetMap(nodeName string) (string, error)
 	if nodeDatasetMap == nil {
 		nodeDatasetMap = c.NodeDatasetMap[NodeDefaultNonListedNodes]
 		if nodeDatasetMap == nil {
-			return nil, fmt.Errorf("config doesn't contain node %v, and no %v available", node, NodeDefaultNonListedNodes)
+			return nil, fmt.Errorf("config doesn't contain node %v, and no %v available", nodeName, NodeDefaultNonListedNodes)
 		}
-		logrus.Debugf("config doesn't contain node %v, using %v instead", node, NodeDefaultNonListedNodes)
+		logrus.Debugf("config doesn't contain node %v, using %v instead", nodeName, NodeDefaultNonListedNodes)
 	}
 	return nodeDatasetMap, nil
 }
 
-func (p *LocalZFSProvisioner) Provision(opts pvController.VolumeOptions) (*v1.PersistentVolume, error) {
-	pvc := opts.PVC
+// Provision creates a storage asset and returns a PV object representing it.
+func (p *LocalZFSProvisioner) Provision(options pvController.VolumeOptions) (*v1.PersistentVolume, error) {
+	node := options.SelectedNode
+	if node == nil {
+		return nil, fmt.Errorf("configuration error, no node was specified")
+	}
+	if p.nodeName != node.Name {
+		logrus.Infof("Provison: This is not the node you are looking for, move along, move along: I am '%s', while pv is for '%s'", p.nodeName, node.Name)
+		return nil, &pvController.IgnoredError{
+			Reason: fmt.Sprintf("Wrong node. I am '%s', while pv is for '%s'", p.nodeName, node.Name),
+		}
+	}
+
+	logrus.Infof("Provisioning volume %v", options)
+	pvc := options.PVC
 	if pvc.Spec.Selector != nil {
 		return nil, fmt.Errorf("claim.Spec.Selector is not supported")
 	}
@@ -160,38 +174,69 @@ func (p *LocalZFSProvisioner) Provision(opts pvController.VolumeOptions) (*v1.Pe
 			return nil, fmt.Errorf("Only support ReadWriteOnce access mode")
 		}
 	}
-	node := opts.SelectedNode
-	if opts.SelectedNode == nil {
-		return nil, fmt.Errorf("configuration error, no node was specified")
+
+	nodeDatasetMap, err := p.getNodeDatasetMap(node.Name)
+	if err != nil {
+		return nil, err
 	}
 
-	// TODO: get dataset size from opts
-	datasetSize = ""
+	// Ensure parent dataset exists.
+	_, err = zfs.GetDataset(nodeDatasetMap.Dataset)
+	if err != nil {
+		_, err = zfs.CreateFilesystem(nodeDatasetMap.Dataset, map[string]string{
+			"mountpoint": "legacy",
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
 
-	pvName := opts.PVName
-	pvPath, err := p.runCreateDatasetPod(node.Name, pvName, datasetSize)
+	// Get capacity from PVC and convert it to a value usable for ZFS quota.
+	capacity := pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)]
+	quota := strconv.FormatInt(capacity.Value(), 10)
+
+	pvName := options.PVName
+	pvPath := filepath.Join(p.datasetMountDir, pvName)
+	datasetName := filepath.Join(nodeDatasetMap.Dataset, pvName)
+
+	zfsCreateProperties := map[string]string{
+		"quota":      quota,
+		"mountpoint": pvPath,
+	}
+
+	// TODO: could the dataset already exist? Would that be a valid use case?
+	_, err = zfs.CreateFilesystem(datasetName, zfsCreateProperties)
 	if err != nil {
 		logrus.Infof("Failed to create volume %v at %v:%v", pvName, node.Name, pvPath)
 		return nil, err
 	}
+	// It seems the dataset is mounted at creation time.
+	// We do not have to explicitly mount it.
+	//dataset, err = dataset.Mount(false, nil)
+	//if err != nil {
+	//	logrus.Infof("Failed to mount volume %v at %v:%v", pvName, node.Name, pvPath)
+	//	return nil, err
+	//}
 
 	logrus.Infof("Created volume %v at %v:%v", pvName, node.Name, pvPath)
 
-	return &v1.PersistentVolume{
+	fs := v1.PersistentVolumeFilesystem
+	hostPathType := v1.HostPathDirectory
+	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
 		},
 		Spec: v1.PersistentVolumeSpec{
-			PersistentVolumeReclaimPolicy: opts.PersistentVolumeReclaimPolicy,
+			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
 			AccessModes:                   pvc.Spec.AccessModes,
-			VolumeMode:                    &v1.PersistentVolumeFilesystem,
+			VolumeMode:                    &fs,
 			Capacity: v1.ResourceList{
 				v1.ResourceName(v1.ResourceStorage): pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
 					Path: pvPath,
-					Type: &v1.HostPathDirectory
+					Type: &hostPathType,
 				},
 			},
 			NodeAffinity: &v1.VolumeNodeAffinity{
@@ -212,35 +257,52 @@ func (p *LocalZFSProvisioner) Provision(opts pvController.VolumeOptions) (*v1.Pe
 				},
 			},
 		},
-	}, nil
+	}
+
+	return pv, nil
 }
 
+// Delete the storage asset that was created by Provision represented by
+// the given PV.
 func (p *LocalZFSProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 	defer func() {
-		err = errors.Wrapf(err, "failed to delete volume %v", pv.Name)
+		err = errors.Wrapf(err, "Failed to delete volume %v", pv.Name)
 	}()
-	path, nodeName, err := p.getPathAndNodeForPV(pv)
+	if pv.Spec.PersistentVolumeReclaimPolicy == v1.PersistentVolumeReclaimRetain {
+		logrus.Infof("retained volume %v", pv.Name)
+		return nil
+	}
+
+	pvPath, nodeName, err := p.getPathAndNodeForPV(pv)
 	if err != nil {
 		return err
 	}
-	if pv.Spec.PersistentVolumeReclaimPolicy != v1.PersistentVolumeReclaimRetain {
-		// TODO: zfs destroy dataset on the node where it lives
-		if p.nodeName != nodeName {
-			logrus.Infof("Delete: This is not the node you are looking for, move along, move along: I am '%s', while pv is for '%s'", p.nodeName, nodeName)
-			return &pvController.IgnoredError{
-				Reason: fmt.Sprintf("Wrong node. I am '%s', while pv is for '%s'", p.nodeName, nodeName),
-			}
-		}
-		logrus.Infof("Now would delete volume %v on %v", pv.Name, nodeName)
-		return nil
 
-		if err := p.cleanupVolume(pv.Name, path, nodeName); err != nil {
-			logrus.Infof("clean up volume %v failed: %v", pv.Name, err)
-			return err
+	if p.nodeName != nodeName {
+		logrus.Infof("Delete: This is not the node you are looking for, move along, move along: I am '%s', while pv is for '%s'", p.nodeName, nodeName)
+		return &pvController.IgnoredError{
+			Reason: fmt.Sprintf("Wrong node. I am '%s', while pv is for '%s'", p.nodeName, nodeName),
 		}
-		return nil
 	}
-	logrus.Infof("retained volume %v", pv.Name)
+	//nodeDatasetMap, err := p.getNodeDatasetMap(nodeName)
+	//if err != nil {
+	//	return nil, err
+	//}
+
+	// Destroy the dataset.
+	dataset, err := zfs.GetDataset(pvPath)
+	if err != nil {
+		// TODO: should this error be ingored?
+		return err
+	}
+	err = dataset.Destroy(zfs.DestroyDefault)
+	if err != nil {
+		logrus.Infof("Failed to delete volume %v on %v:%v: %v", pv.Name, nodeName, pvPath, err)
+		return err
+	}
+	// Also delete the mountpoint.
+	os.Remove(pvPath)
+	logrus.Infof("Deleted volume %v on %v:%v", pv.Name, nodeName, pvPath)
 	return nil
 }
 
@@ -285,116 +347,6 @@ func (p *LocalZFSProvisioner) getPathAndNodeForPV(pv *v1.PersistentVolume) (path
 	return path, node, nil
 }
 
-func (p *LocalZFSProvisioner) runCreateDatasetPod(nodeName string, pvName string, datasetSize string) (pvPath string, err error) {
-    nodeDatasetMap, err := p.getNodeDatasetMap(nodeName)
-    if err != nil {
-        return nil, err
-    }
-	args := []string{
-		"--dataset", nodeDatasetMap.Dataset,
-		"--mount-point", nodeDatasetMap.MountPoint,
-	}
-    if datasetSize != "" {
-        args = append(args, "--size")
-        // TODO: convert size from k8s to zfs format
-        args = append(args, datasetSize)
-    }
-	err = p.runDatasetPod(nodeName, "create", pvName, args)
-    if err != nil {
-        return nil, err
-    }
-    pvPath := filepath.Join(nodeDatasetMap.MountPoint, pvName)
-    logrus.Infof("Successfully created persistent volume at %v:%v", nodeName, pvPath)
-    return pvPath, nil
-
-}
-
-func (p *LocalZFSProvisioner) runDeleteDatasetPod(nodeName string, pvName string, datasetSize string) (pvPath string, err error) {
-    nodeDatasetMap, err := p.getNodeDatasetMap(nodeName)
-    if err != nil {
-        return nil, err
-    }
-	args := []string{
-		"--dataset", nodeDatasetMap.Dataset,
-		"--mount-point", nodeDatasetMap.MountPoint,
-	}
-    if datasetSize != "" {
-        args = append(args, "--size")
-        // TODO: convert size from k8s to zfs format
-        args = append(args, datasetSize)
-    }
-	return p.runDatasetPod(nodeName, "create", pvName, args)
-
-}
-func (p *LocalZFSProvisioner) runDatasetPod(nodeName string, action string, pvName string, args []string) (err error) {
-	defer func() {
-		err = errors.Wrapf(err, "failed to %v persistent volume %v on node %v", action, pvName, nodeName)
-	}()
-	if nodeName == "" || action == "" || pvName == "" {
-		return fmt.Errorf("invalid empty nodeName, action or pvName")
-	}
-
-    nodeDatasetMap, err := p.getNodeDatasetMap(nodeName)
-    if err != nil {
-        return err
-    }
-
-	podArgs := []string{"dataset", action}
-	if args != nil {
-		podArgs = append(podArgs, args...)
-	}
-	podArgs = append(podArgs, pvName)
-	privileged := true
-	datasetPod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: node + "-" + action + "-" + datasetName,
-		},
-		Spec: v1.PodSpec{
-			RestartPolicy: v1.RestartPolicyNever,
-			NodeName:      nodeName,
-			HostNetwork:   true,
-			Containers: []v1.Container{
-				{
-					Name:    "local-zfs-provisioner-"+ action,
-					Image:   DockerImage,
-					Command: []string{"/local-zfs-provisioner"},
-					Args:    &podArgs,
-					SecurityContext: &v1.SecurityContext{
-						Privileged: &privileged,
-					},
-				},
-			},
-		},
-	}
-
-	pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Create(datasetPod)
-	if err != nil {
-		return err
-	}
-
-	defer func() {
-		e := p.kubeClient.CoreV1().Pods(p.namespace).Delete(pod.Name, &metav1.DeleteOptions{})
-		if e != nil {
-			logrus.Errorf("unable to delete the dataset operation pod: %v", e)
-		}
-	}()
-
-	completed := false
-	for i := 0; i < CleanupTimeoutCounts; i++ {
-		if pod, err := p.kubeClient.CoreV1().Pods(p.namespace).Get(pod.Name, metav1.GetOptions{}); err != nil {
-			return err
-		} else if pod.Status.Phase == v1.PodSucceeded {
-			completed = true
-			break
-		}
-		time.Sleep(2 * time.Second)
-	}
-	if !completed {
-		return fmt.Errorf("dataset operation timed out after %v seconds", CleanupTimeoutCounts)
-	}
-	return nil
-}
-
 func loadConfigFile(configFile string) (cfgData *ConfigData, err error) {
 	defer func() {
 		err = errors.Wrapf(err, "fail to load config file %v", configFile)
@@ -422,25 +374,14 @@ func canonicalizeConfig(data *ConfigData) (cfg *Config, err error) {
 		if cfg.NodeDatasetMap[n.Node] != nil {
 			return nil, fmt.Errorf("duplicate node %v", n.Node)
 		}
-		if n.Dataset[0] == "/" {
+		if n.Dataset[0] == '/' {
 			return nil, fmt.Errorf("dataset name can not start with '/': %v:%v", n.Node, n.Dataset)
 		}
 		if n.Dataset == "" {
 			return nil, fmt.Errorf("dataset name can not be empty: %v:%v", n.Node, n.Dataset)
 		}
-		if n.MountPoint[0] != "/" {
-			return nil, fmt.Errorf("mountpoint must start with '/': %v:%v", n.Node, n.MountPoint)
-		}
-		mountPoint, err := filepath.Abs(n.MountPoint)
-		if err != nil {
-			return nil, err
-		}
-		if mountPoint == "/" {
-			return nil, fmt.Errorf("cannot use root ('/') as mountpoint on node %v", n.Node)
-		}
-		cfg.NodeDatasetMap[n.Node] = NodeDatasetMap{
+		cfg.NodeDatasetMap[n.Node] = &NodeDatasetMap{
 			Dataset: n.Dataset,
-			MountPoint: mountPoint,
 		}
 	}
 	return cfg, nil

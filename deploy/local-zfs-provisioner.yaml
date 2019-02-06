@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: local-zfs-provisioner
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  name: local-zfs-provisioner
+  namespace: kube-system
+rules:
+- apiGroups: [""]
+  resources: ["nodes", "persistentvolumeclaims"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources: ["endpoints", "persistentvolumes", "pods"]
+  verbs: ["*"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create", "patch"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: local-zfs-provisioner
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: local-zfs-provisioner
+subjects:
+- kind: ServiceAccount
+  name: local-zfs-provisioner
+  namespace: kube-system
+---
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  name: local-zfs-provisioner
+  namespace: kube-system
+  labels:
+    app: local-zfs-provisioner
+    tier: node
+spec:
+  template:
+    metadata:
+      labels:
+        app: local-zfs-provisioner
+      annotations:
+        scheduler.alpha.kubernetes.io/critical-pod: ''
+    spec:
+      serviceAccountName: local-zfs-provisioner
+      serviceAccount: local-zfs-provisioner
+      containers:
+      - name: local-zfs-provisioner
+        image: asteven/local-zfs-provisioner:v0.0.1
+        imagePullPolicy: Always
+        args:
+        - --debug
+        - --dataset-mount-dir=/var/lib/local-zfs-provisioner
+        - --config=/etc/config/config.json
+        securityContext:
+          privileged: true
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
+        volumeMounts:
+        - name: config-volume
+          mountPath: /etc/config/
+          readOnly: true
+        - name: dataset-mount-dir
+          mountPath: /var/lib/local-zfs-provisioner
+          # needed so that any mounts setup inside this container are
+          # propagated back to the host machine.
+          mountPropagation: "Bidirectional"
+      volumes:
+        - name: config-volume
+          configMap:
+            name: local-zfs-provisioner-config
+        - name: dataset-mount-dir
+          hostPath:
+            path: /var/lib/local-zfs-provisioner
+            type: DirectoryOrCreate
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-zfs
+provisioner: asteven/local-zfs
+volumeBindingMode: WaitForFirstConsumer
+reclaimPolicy: Delete

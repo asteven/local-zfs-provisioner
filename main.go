@@ -10,7 +10,7 @@ import (
 	"github.com/jawher/mow.cli"
 	"github.com/pkg/errors"
 
-	//pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
+	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	//pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 
 	clientset "k8s.io/client-go/kubernetes"
@@ -20,7 +20,8 @@ import (
 var (
 	Version                = "0.0.1"
 	DefaultProvisionerName = "asteven/local-zfs"
-	DefaultNamespace       = "local-zfs-storage"
+	DefaultNamespace       = "kube-system"
+	DefaultDatasetMountDir = "/var/lib/local-zfs-provisioner"
 )
 
 func RegisterShutdownChannel(done chan struct{}) {
@@ -33,7 +34,7 @@ func RegisterShutdownChannel(done chan struct{}) {
 	}()
 }
 
-func startController(configFile string, provisionerName string, namespace string) error {
+func startController(configFile string, datasetMountDir string, provisionerName string, namespace string) error {
 	stopCh := make(chan struct{})
 	RegisterShutdownChannel(stopCh)
 
@@ -50,10 +51,10 @@ func startController(configFile string, provisionerName string, namespace string
 		logrus.Debug("kubeClient FTW")
 	}
 
-	//serverVersion, err := kubeClient.Discovery().ServerVersion()
-	//if err != nil {
-	//	return errors.Wrap(err, "Cannot start Provisioner: failed to get Kubernetes server version")
-	//}
+	serverVersion, err := kubeClient.Discovery().ServerVersion()
+	if err != nil {
+		return errors.Wrap(err, "Cannot start Provisioner: failed to get Kubernetes server version")
+	}
 
 	nodeName := os.Getenv("NODE_NAME")
 	if nodeName == "" {
@@ -61,14 +62,11 @@ func startController(configFile string, provisionerName string, namespace string
 	}
 
 	fmt.Println("configFile: ", configFile)
+	fmt.Println("datasetMountDir: ", datasetMountDir)
 	fmt.Println("provisionerName: ", provisionerName)
 	fmt.Println("namespace: ", namespace)
-	return nil
 
-}
-
-/*
-	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, namespace, nodeName)
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, datasetMountDir, namespace, nodeName)
 	if err != nil {
 		return err
 	}
@@ -82,7 +80,7 @@ func startController(configFile string, provisionerName string, namespace string
 	pc.Run(stopCh)
 	logrus.Debug("Provisioner stopped")
 	return nil
-*/
+}
 
 func main() {
 	logrus.SetFormatter(&logrus.TextFormatter{FullTimestamp: true})
@@ -90,10 +88,25 @@ func main() {
 	app := cli.App("local-zfs-provisioner", "Local ZFS Provisioner")
 
 	app.Version("version", Version)
-	app.Spec = "[-d]"
+	app.Spec = "[-d] --config [--dataset-mount-dir] [--provisioner] [--namespace]"
 
 	var (
-		debug = app.BoolOpt("d debug", false, "enable debug logging level")
+		debug           = app.BoolOpt("d debug", false, "enable debug logging level")
+		configFile      = app.StringOpt("config", "", "Provisioner configuration file.")
+		datasetMountDir = app.StringOpt("dataset-mount-dir", DefaultDatasetMountDir, "Directory under which to mount the created persistent volumes.")
+
+		provisionerName = app.String(cli.StringOpt{
+			Name:   "provisioner",
+			Value:  DefaultProvisionerName,
+			Desc:   "Specify Provisioner name.",
+			EnvVar: "PROVISIONER_NAME",
+		})
+		namespace = app.String(cli.StringOpt{
+			Name:   "namespace",
+			Value:  DefaultNamespace,
+			Desc:   "The namespace that Provisioner is running in.",
+			EnvVar: "NAMESPACE",
+		})
 	)
 
 	app.Before = func() {
@@ -102,60 +115,24 @@ func main() {
 		}
 	}
 
-	app.Command("controller", "start controller", func(cmd *cli.Cmd) {
-		var (
-			configFile = cmd.StringOpt("config", "", "Provisioner configuration file.")
-
-			provisionerName = cmd.String(cli.StringOpt{
-				Name:   "provisioner",
-				Value:  DefaultProvisionerName,
-				Desc:   "Specify Provisioner name.",
-				EnvVar: "PROVISIONER_NAME",
-			})
-			namespace = cmd.String(cli.StringOpt{
-				Name:   "namespace",
-				Value:  DefaultNamespace,
-				Desc:   "The namespace that Provisioner is running in.",
-				EnvVar: "NAMESPACE",
-			})
-		)
-		cmd.Spec = "--config"
-		cmd.Action = func() {
-			if *configFile == "" {
-				logrus.Fatalf("invalid empty flag %v", "config")
-			}
-			if *provisionerName == "" {
-				logrus.Fatalf("invalid empty flag %v", "provisioner")
-			}
-			if *namespace == "" {
-				logrus.Fatalf("invalid empty flag %v", "namespace")
-			}
-
-			if err := startController(*configFile, *provisionerName, *namespace); err != nil {
-				logrus.Fatalf("Error starting daemon: %v", err)
-			}
+	app.Action = func() {
+		if *configFile == "" {
+			logrus.Fatalf("invalid empty flag %v", "config")
 		}
-	})
-	app.Command("dataset", "manage datasets", func(datasetCmd *cli.Cmd) {
-		datasetCmd.Command("create", "create dataset", func(cmd *cli.Cmd) {
-			var (
-				dataset = cmd.StringArg("DATASET", "", "Name of the dataset to create")
-				size    = cmd.StringOpt("size", "", "Size of the dataset")
-			)
-			cmd.Action = func() {
-				fmt.Println("dataset: ", *dataset)
-				fmt.Println("size: ", *size)
-			}
-		})
-		datasetCmd.Command("destroy", "destroy dataset", func(cmd *cli.Cmd) {
-			var (
-				dataset = cmd.StringArg("DATASET", "", "Name of the dataset to destroy")
-			)
-			cmd.Action = func() {
-				fmt.Println("dataset: ", *dataset)
-			}
-		})
-	})
+		if *datasetMountDir == "" {
+			logrus.Fatalf("invalid empty flag %v", "datasetMountDir")
+		}
+		if *provisionerName == "" {
+			logrus.Fatalf("invalid empty flag %v", "provisioner")
+		}
+		if *namespace == "" {
+			logrus.Fatalf("invalid empty flag %v", "namespace")
+		}
+
+		if err := startController(*configFile, *datasetMountDir, *provisionerName, *namespace); err != nil {
+			logrus.Fatalf("Error starting provisioner: %v", err)
+		}
+	}
 
 	app.Run(os.Args)
 

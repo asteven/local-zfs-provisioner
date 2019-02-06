@@ -13,32 +13,35 @@
 # limitations under the License.
 
 IMG_NAMESPACE = asteven
-IMG_NAME = local-zfs
+IMG_NAME = local-zfs-provisioner
 IMG_FQNAME = $(IMG_NAMESPACE)/$(IMG_NAME)
 IMG_TAG = latest
 IMG_VERSION = v0.0.1
 
-.PHONY: all local-zfs-provisioner clean
 
-all: local-zfs-provisioner
+.PHONY: gofmt container push-container clean
+all: test local-zfs-provisioner container
+
+test: gofmt
 
 gofmt:
 	gofmt -s -w ./main.go ./provisioner.go
 
-local-zfs-provisioner: gofmt
+local-zfs-provisioner:
 	if [ ! -d ./vendor ]; then dep ensure; fi
 	CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-extldflags "-static"' -o local-zfs-provisioner ./main.go ./provisioner.go
 
 container: local-zfs-provisioner
-	docker build -t $(IMG_FQNAME):$(IMG_VERSION) .
+	sudo docker build -t $(IMG_FQNAME):$(IMG_VERSION) .
 
 _push-container: container
-	docker push $(IMG_FQNAME):$(IMG_VERSION)
+	sudo docker push $(IMG_FQNAME):$(IMG_VERSION)
 
-push-container:
-	docker push $(IMG_FQNAME):$(IMG_VERSION)
+push:
+	sudo docker push $(IMG_FQNAME):$(IMG_VERSION)
 
 clean:
-	go clean -r -x
-	rm -f ./deploy/docker/local-zfs-provisioner
+	#go clean -r -x
+	rm -f local-zfs-provisioner
+	sudo docker rmi $(IMG_FQNAME):$(IMG_VERSION)
 

@@ -1,22 +1,20 @@
 kind: ConfigMap
 apiVersion: v1
 metadata:
-  name: local-zfs-config
-  namespace: local-zfs-storage
+  name: local-zfs-provisioner-config
+  namespace: kube-system
 data:
   config.json: |-
-        {
-                "nodeDatasetMap":[
-                {
-                        "node":"DEFAULT_PATH_FOR_NON_LISTED_NODES",
-                        "dataset": "chaos/data/local-zfs-provisioner",
-                        "mountPoint": "/var/lib/local-zfs-provisioner"
-                },
-                {
-                        "node":"lab-sb-a-01",
-                        "dataset": "chaos/data/my-local-zfs-provisioner",
-                        "mountPoint": "/local/local-zfs-provisioner"
-                }
-                ]
-        }
+    {
+        "nodeDatasetMap": [
+            {
+                "node": "DEFAULT_PATH_FOR_NON_LISTED_NODES",
+                "dataset": "chaos/data/local-zfs-provisioner"
+            },
+            {
+                "node": "that-other-node",
+                "dataset": "tank/local-zfs-provisioner"
+            }
+        ]
+    }
 
