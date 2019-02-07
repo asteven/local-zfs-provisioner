@@ -10,8 +10,8 @@ import (
 	"github.com/jawher/mow.cli"
 	"github.com/pkg/errors"
 
-	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
-	//pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	//pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -66,7 +66,7 @@ func startController(configFile string, datasetMountDir string, provisionerName 
 	fmt.Println("provisionerName: ", provisionerName)
 	fmt.Println("namespace: ", namespace)
 
-	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, datasetMountDir, namespace, nodeName)
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, datasetMountDir, provisionerName, namespace, nodeName)
 	if err != nil {
 		return err
 	}
@@ -75,6 +75,7 @@ func startController(configFile string, datasetMountDir string, provisionerName 
 		provisionerName,
 		provisioner,
 		serverVersion.GitVersion,
+		pvController.LeaderElection(false),
 	)
 	logrus.Debug("Provisioner started")
 	pc.Run(stopCh)

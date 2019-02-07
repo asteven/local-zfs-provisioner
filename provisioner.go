@@ -7,17 +7,18 @@ import (
 	"path/filepath"
 	"reflect"
 	"strconv"
+	//"strings"
 	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/pkg/errors"
 
-	pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
+	//pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	//pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 
 	zfs "github.com/mistifyio/go-zfs"
 )
@@ -38,8 +39,11 @@ type LocalZFSProvisioner struct {
 	stopCh          chan struct{}
 	kubeClient      *clientset.Clientset
 	datasetMountDir string
+	provisionerName string
 	namespace       string
 	nodeName        string
+
+	datasetNameAnnotation string
 
 	config      *Config
 	configData  *ConfigData
@@ -64,14 +68,17 @@ type Config struct {
 	NodeDatasetMap map[string]*NodeDatasetMap
 }
 
-func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile string, datasetMountDir string, namespace string, nodeName string) (*LocalZFSProvisioner, error) {
+func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile string, datasetMountDir string, provisionerName string, namespace string, nodeName string) (*LocalZFSProvisioner, error) {
 	p := &LocalZFSProvisioner{
 		stopCh: stopCh,
 
 		kubeClient:      kubeClient,
 		datasetMountDir: datasetMountDir,
+		provisionerName: provisionerName,
 		namespace:       namespace,
 		nodeName:        nodeName,
+
+		datasetNameAnnotation: provisionerName + ".datasetName",
 
 		// config will be updated shortly by p.refreshConfig()
 		config:      nil,
@@ -222,6 +229,9 @@ func (p *LocalZFSProvisioner) Provision(options pvController.VolumeOptions) (*v1
 
 	fs := v1.PersistentVolumeFilesystem
 	hostPathType := v1.HostPathDirectory
+	//		Annotations: map[string]string{
+	//			p.datasetNameAnnotation: datasetName,
+	//		},
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: pvName,
@@ -284,13 +294,29 @@ func (p *LocalZFSProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 			Reason: fmt.Sprintf("Wrong node. I am '%s', while pv is for '%s'", p.nodeName, nodeName),
 		}
 	}
-	//nodeDatasetMap, err := p.getNodeDatasetMap(nodeName)
-	//if err != nil {
-	//	return nil, err
+
+	//// Get the dataset that should be deleted from the volume's annotation.
+	//datasetName, ok := pv.Annotations[p.datasetNameAnnotation]
+	//if !ok {
+	//	return fmt.Errorf("Can not delete volume %v. Missing '%v' annotation.", pv.Name, p.datasetNameAnnotation)
+	//}
+
+	// Construct dataset name based on pv path and name
+
+	nodeDatasetMap, err := p.getNodeDatasetMap(nodeName)
+	if err != nil {
+		return err
+	}
+
+	datasetName := filepath.Join(nodeDatasetMap.Dataset, pv.Name)
+
+	// Safety check: only delete dataset if it's a child of the configured parent dataset.
+	//if !strings.HasPrefix(datasetName, nodeDatasetMap.Dataset) {
+	//	return fmt.Errorf("Refusing todelete volume %v. Dataset %v is not a child of the configured parent dataset %v.", pv.Name, datasetName, nodeDatasetMap.Dataset)
 	//}
 
 	// Destroy the dataset.
-	dataset, err := zfs.GetDataset(pvPath)
+	dataset, err := zfs.GetDataset(datasetName)
 	if err != nil {
 		// TODO: should this error be ingored?
 		return err
