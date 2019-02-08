@@ -15,6 +15,8 @@ import (
 
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
+
+	zfs "github.com/mistifyio/go-zfs"
 )
 
 var (
@@ -75,7 +77,6 @@ func startController(configFile string, datasetMountDir string, provisionerName 
 		provisionerName,
 		provisioner,
 		serverVersion.GitVersion,
-		pvController.LeaderElection(false),
 	)
 	logrus.Debug("Provisioner started")
 	pc.Run(stopCh)
@@ -89,25 +90,10 @@ func main() {
 	app := cli.App("local-zfs-provisioner", "Local ZFS Provisioner")
 
 	app.Version("version", Version)
-	app.Spec = "[-d] --config [--dataset-mount-dir] [--provisioner] [--namespace]"
+	app.Spec = "[-d]"
 
 	var (
-		debug           = app.BoolOpt("d debug", false, "enable debug logging level")
-		configFile      = app.StringOpt("config", "", "Provisioner configuration file.")
-		datasetMountDir = app.StringOpt("dataset-mount-dir", DefaultDatasetMountDir, "Directory under which to mount the created persistent volumes.")
-
-		provisionerName = app.String(cli.StringOpt{
-			Name:   "provisioner",
-			Value:  DefaultProvisionerName,
-			Desc:   "Specify Provisioner name.",
-			EnvVar: "PROVISIONER_NAME",
-		})
-		namespace = app.String(cli.StringOpt{
-			Name:   "namespace",
-			Value:  DefaultNamespace,
-			Desc:   "The namespace that Provisioner is running in.",
-			EnvVar: "NAMESPACE",
-		})
+		debug = app.BoolOpt("d debug", false, "enable debug logging level")
 	)
 
 	app.Before = func() {
@@ -116,24 +102,122 @@ func main() {
 		}
 	}
 
-	app.Action = func() {
-		if *configFile == "" {
-			logrus.Fatalf("invalid empty flag %v", "config")
-		}
-		if *datasetMountDir == "" {
-			logrus.Fatalf("invalid empty flag %v", "datasetMountDir")
-		}
-		if *provisionerName == "" {
-			logrus.Fatalf("invalid empty flag %v", "provisioner")
-		}
-		if *namespace == "" {
-			logrus.Fatalf("invalid empty flag %v", "namespace")
-		}
+	app.Command("controller", "start controller", func(cmd *cli.Cmd) {
+		var (
+			configFile      = cmd.StringOpt("config", "", "Provisioner configuration file.")
+			datasetMountDir = cmd.StringOpt("dataset-mount-dir", DefaultDatasetMountDir, "Directory under which to mount the created persistent volumes.")
 
-		if err := startController(*configFile, *datasetMountDir, *provisionerName, *namespace); err != nil {
-			logrus.Fatalf("Error starting provisioner: %v", err)
+			provisionerName = cmd.String(cli.StringOpt{
+				Name:   "provisioner",
+				Value:  DefaultProvisionerName,
+				Desc:   "Specify Provisioner name.",
+				EnvVar: "PROVISIONER_NAME",
+			})
+			namespace = cmd.String(cli.StringOpt{
+				Name:   "namespace",
+				Value:  DefaultNamespace,
+				Desc:   "The namespace that Provisioner is running in.",
+				EnvVar: "NAMESPACE",
+			})
+		)
+		cmd.Spec = "--config [--dataset-mount-dir] [--provisioner] [--namespace]"
+		cmd.Action = func() {
+			if *configFile == "" {
+				logrus.Fatalf("invalid empty flag %v", "config")
+			}
+			if *datasetMountDir == "" {
+				logrus.Fatalf("invalid empty flag %v", "datasetMountDir")
+			}
+			if *provisionerName == "" {
+				logrus.Fatalf("invalid empty flag %v", "provisioner")
+			}
+			if *namespace == "" {
+				logrus.Fatalf("invalid empty flag %v", "namespace")
+			}
+
+			if err := startController(*configFile, *datasetMountDir, *provisionerName, *namespace); err != nil {
+				logrus.Fatalf("Error starting provisioner: %v", err)
+			}
 		}
-	}
+	})
+
+	app.Command("dataset", "manage datasets", func(datasetCmd *cli.Cmd) {
+		datasetCmd.Command("create", "create dataset", func(cmd *cli.Cmd) {
+			var (
+				datasetName = cmd.StringArg("DATASET", "", "Name of the dataset")
+				mountPoint  = cmd.StringArg("MOUNTPOINT", "", "Mountpoint of the dataset")
+				quota       = cmd.StringOpt("quota", "", "Quota of the dataset")
+				parent      = cmd.StringOpt("parent", "", "Parent dataset under which to create datasets")
+			)
+			cmd.Spec = "--parent [--quota] DATASET MOUNTPOINT"
+			cmd.Action = func() {
+				fmt.Println("dataset: ", *datasetName)
+				fmt.Println("mountpoint: ", *mountPoint)
+				fmt.Println("parent: ", *parent)
+				fmt.Println("quota: ", *quota)
+
+				// Ensure parent dataset exists.
+				_, err := zfs.GetDataset(*parent)
+				if err != nil {
+					_, err = zfs.CreateFilesystem(*parent, map[string]string{
+						"mountpoint": "legacy",
+					})
+					if err != nil {
+						logrus.Fatalf("Failed to create parent dataset %v: %v", *parent, err)
+					}
+				}
+
+				zfsCreateProperties := map[string]string{
+					"quota":      *quota,
+					"mountpoint": *mountPoint,
+				}
+
+				// TODO: could the dataset already exist? Would that be a valid use case?
+				//		 e.g. depending on the PersistentVolumeReclaimPolicy?
+				//dataset, err = zfs.CreateFilesystem(datasetName, zfsCreateProperties)
+				_, err = zfs.CreateFilesystem(*datasetName, zfsCreateProperties)
+				if err != nil {
+					logrus.Fatalf("Failed to create dataset %v: %v", *datasetName, err)
+				}
+
+				// It seems the dataset is mounted at creation time.
+				// We do not have to explicitly mount it.
+				//dataset, err = dataset.Mount(false, nil)
+				//if err != nil {
+				//	logrus.Fatalf("Failed to mount dataset %v at %v: %v", *datasetName, *mountPoint, err)
+				//  return nil, err
+				//}
+
+				logrus.Infof("Created and mounted dataset %v at %v", *datasetName, *mountPoint)
+			}
+		})
+
+		datasetCmd.Command("destroy", "destroy dataset", func(cmd *cli.Cmd) {
+			var (
+				datasetName = cmd.StringArg("DATASET", "", "Name of the dataset")
+				mountPoint  = cmd.StringArg("MOUNTPOINT", "", "Mountpoint of the dataset")
+			)
+			cmd.Spec = "DATASET MOUNTPOINT"
+			cmd.Action = func() {
+				fmt.Println("dataset: ", *datasetName)
+				fmt.Println("mountpoint: ", *mountPoint)
+
+				// Destroy the dataset.
+				dataset, err := zfs.GetDataset(*datasetName)
+				if err != nil {
+					// TODO: should this error be ingored?
+					logrus.Fatalf("Failed to get dataset %v: %v", *datasetName, err)
+				}
+				err = dataset.Destroy(zfs.DestroyDefault)
+				if err != nil {
+					logrus.Fatalf("Failed to delete dataset %v: %v", *datasetName, err)
+				}
+				// Also delete the mountpoint.
+				os.Remove(*mountPoint)
+				logrus.Infof("Deleted dataset %v", *datasetName)
+			}
+		})
+	})
 
 	app.Run(os.Args)
 
