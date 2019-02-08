@@ -29,8 +29,7 @@ const (
 )
 
 var (
-	CleanupTimeoutCounts = 120
-
+	CleanupTimeoutCounts    = 120
 	ConfigFileCheckInterval = 5 * time.Second
 )
 
@@ -254,17 +253,38 @@ func (p *LocalZFSProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 		return nil
 	}
 
-	// Get the dataset that should be deleted from the volume's annotation.
-	datasetName, ok := pv.Annotations[p.datasetNameAnnotation]
+	// Get the dataset backing this pv from the volume's annotation.
+	// It is not safe to use this for deletion. It is only used to detect and log
+	// any tampering attempts.
+	pvDatasetName, ok := pv.Annotations[p.datasetNameAnnotation]
 	if !ok {
 		return fmt.Errorf("Can not delete volume %v. Missing '%v' annotation.", pv.Name, p.datasetNameAnnotation)
 	}
 
-	nodeName, mountPoint, err := p.getNodeAndMountPointForPV(pv)
+	nodeName, pvMountPoint, err := p.getNodeAndMountPointForPV(pv)
 	if err != nil {
 		return err
 	}
 
+	nodeDatasetMap, err := p.getNodeDatasetMap(nodeName)
+	if err != nil {
+		return err
+	}
+
+	// Re-construct our own safe datasetName and mountPoint for the actual deletion.
+	parentDataset := nodeDatasetMap.Dataset
+	datasetName := filepath.Join(parentDataset, pv.Name)
+	mountPoint := filepath.Join(p.datasetMountDir, pv.Name)
+
+	// Log any tampering attempt.
+	if mountPoint != pvMountPoint {
+		logrus.Warnf("Volume mount point has been tampered with: got %v, expected %v", pvMountPoint, mountPoint)
+	}
+	if datasetName != pvDatasetName {
+		logrus.Warnf("Volume dataset name has been tampered with: got %v, expected %v", pvDatasetName, datasetName)
+	}
+
+	// Schedule the dataset deletion pod.
 	err = p.runDeleteDatasetPod(nodeName, pv.Name, datasetName, mountPoint)
 	if err != nil {
 		return fmt.Errorf("Failed to delete volume %v on %v:%v: %v", pv.Name, nodeName, mountPoint, err)
