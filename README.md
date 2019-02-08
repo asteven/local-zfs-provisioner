@@ -6,7 +6,15 @@ The original code was changed to work with ZFS datasets instead of local directo
 
 ## Overview
 
-Local ZFS Provisioner provides a way for the Kubernetes users to utilize the local storage in each node. Based on the user configuration, the Local ZFS Provisioner will create `hostPath` based persistent volume on the node automatically. It utilizes the features introduced by Kubernetes [Local Persistent Volume feature](https://kubernetes.io/blog/2018/04/13/local-persistent-volumes-beta/), but make it a simpler solution than the built-in `local` volume feature in Kubernetes.
+Local ZFS Provisioner provides a way for Kubernetes to utilize the local
+storage on each node. Based on the user configuration, the Local ZFS Provisioner
+will create `hostPath` based persistent volumes on the nodes automatically.
+It utilizes the features introduced by Kubernetes [Local Persistent Volume feature](https://kubernetes.io/blog/2018/04/13/local-persistent-volumes-beta/),
+but it is much simpler to use then the built-in `local` volume feature in Kubernetes.
+
+The ZFS Provisioner is implemented as a hostPath provisioner that shedules pods
+targeted at specific nodes to provision or delete datasets to fullfill the requested
+Persistent Volume Claims. It is typically deployed as a Kubernetes Deployment.
 
 
 ## Requirement
@@ -16,13 +24,13 @@ Kubernetes v1.12+.
 
 ### Installation
 
-The Local ZFS Provisioner is designed to run as a Daemonset.
-Every node in the cluster will run a pod that handles the provisoning and deletion of Persistent Volumes for Pods running on the node.
-
-In this setup, the directory `/var/lib/local-zfs-provisioner` will be used across all the nodes as the path for mounting the datasets. The provisioner will be installed in the `kube-system` namespace by default.
+In this setup the directory `/var/lib/local-zfs-provisioner` will be used across
+all nodes as the base mount point for provisoned datasets.
+The provisioner will be installed in the `kube-system` namespace by default.
 
 ```
-kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/deploy/local-zfs-provisioner.yaml
+kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/deploy/rbac.yaml
+kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/deploy/deployment.yaml
 ```
 
 Create a suitable configmap and add it to the cluster. You will have to change this to work
@@ -34,14 +42,15 @@ kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner
 
 ## Usage
 
-Create a `hostPath` backed Persistent Volume and a pod uses it:
+Create a `hostPath` backed Persistent Volume Claim and a pod that uses it:
 
 ```
 kubectl create -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pvc.yaml
 kubectl create -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
 ```
 
-You should see the PV has been created:
+You should see that the PV has been created:
+
 ```
 $ kubectl get pv
 NAME                                       CAPACITY   ACCESS MODES   RECLAIM POLICY   STATUS   CLAIM                    STORAGECLASS   REASON   AGE
@@ -49,6 +58,7 @@ pvc-5fdc9d7f-2a27-11e9-8180-a4bf0112bd54   2Gi        RWO            Delete     
 ```
 
 The PVC has been bound:
+
 ```
 $ kubectl get pvc
 NAME             STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
@@ -56,34 +66,40 @@ local-zfs-pvc    Bound    pvc-5fdc9d7f-2a27-11e9-8180-a4bf0112bd54   2Gi        
 ```
 
 And the Pod started running:
+
 ```
 $ kubectl get pod
 NAME              READY     STATUS    RESTARTS   AGE
 volume-test-zfs   1/1       Running   0          3s
 ```
 
-Write something into the pod
+Write something into the pods volume:
+
 ```
 kubectl exec volume-test-zfs -- sh -c "echo local-zfs-test > /data/test"
 ```
 
-Now delete the pod using
+Now delete the pod again:
+
 ```
 kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
 ```
 
-After confirm that the pod is gone, recreated the pod using
+After confirming that the pod is gone, recreated it:
+
 ```
 kubectl create -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
 ```
 
 Check the volume content:
+
 ```
 $ kubectl exec volume-test-zfs cat /data/test
 local-zfs-test
 ```
 
-Delete the pod and pvc
+Delete the pod and the pvc:
+
 ```
 kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
 kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pvc.yaml
@@ -91,11 +107,12 @@ kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisione
 
 The volume content stored on the node will be automatically cleaned up. You can check the log of the `local-zfs-provisioner-xxx` pod for details.
 
-Now you've verified that the provisioner works as expected.
+You have now verified that the provisioner works as expected.
+
 
 ## Configuration
 
-The configuration of the provisioner is a json file `config.json`, stored in the a config map, e.g.:
+The configuration of the provisioner is a json file `config.json`, stored in a config map, e.g.:
 ```
 kind: ConfigMap
 apiVersion: v1
@@ -132,20 +149,21 @@ The configuration must obey following rules:
 
 ### Reloading
 
-The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-zfs-provisioner-config`. It will be a delay between user update the config map and the provisioner pick it up.
+The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-zfs-provisioner-config`.
 
-When the provisioner detected the configuration changes, it will try to load the new configuration.
+When the provisioner detects configuration changes, it will try to load the new configuration.
 
-If the reload failed due to some reason, the provisioner will report error in the log, and **continue using the last valid configuration for provisioning in the meantime**.
+If the reload fails due to some reason, the provisioner will report error in the log, and **continue using the last valid configuration for provisioning in the meantime**.
 
 ## Uninstall
 
-Before uninstallation, make sure the PVs created by the provisioner has already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-zfs`.
+Before uninstallation, make sure that the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-zfs`.
 
 To uninstall, execute:
 
 ```
-kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/deploy/local-zfs-provisioner.yaml
+kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/deploy/deployment.yaml
+kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/deploy/rbac.yaml
 ```
 
 ## License
