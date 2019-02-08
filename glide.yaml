@@ -1,0 +1,25 @@
+package: github.com/asteven/local-zfs-provisioner
+import:
+- package: github.com/Sirupsen/logrus
+  version: ^1.3.0
+- package: github.com/jawher/mow.cli
+  version: ^1.0.4
+- package: github.com/mistifyio/go-zfs
+  version: ^2.1.1
+- package: github.com/pkg/errors
+  version: ^0.8.1
+- package: k8s.io/api
+  subpackages:
+  - core/v1
+- package: k8s.io/apimachinery
+  subpackages:
+  - pkg/apis/meta/v1
+- package: k8s.io/client-go
+  version: ^10.0.0
+  subpackages:
+  - kubernetes
+  - rest
+- package: sigs.k8s.io/sig-storage-lib-external-provisioner
+  version: ^2.2.0
+  subpackages:
+  - controller
