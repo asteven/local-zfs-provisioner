@@ -9,14 +9,11 @@ import (
 	"github.com/Sirupsen/logrus"
 	"github.com/jawher/mow.cli"
 	"github.com/pkg/errors"
-
-	//pvController "github.com/kubernetes-incubator/external-storage/lib/controller"
-	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	zfs "github.com/mistifyio/go-zfs"
 
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-
-	zfs "github.com/mistifyio/go-zfs"
+	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 )
 
 var (
