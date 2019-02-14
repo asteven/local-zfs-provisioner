@@ -46,6 +46,7 @@ spec:
         - name: config-volume
           configMap:
             name: local-zfs-provisioner-config
+      hostNetwork: true
       tolerations:
       - key: CriticalAddonsOnly
         operator: Exists
