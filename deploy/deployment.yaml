@@ -29,8 +29,6 @@ spec:
         - controller
         - --dataset-mount-dir=/var/lib/local-zfs-provisioner
         - --config=/etc/config/config.json
-        securityContext:
-          privileged: true
         env:
         - name: NODE_NAME
           valueFrom:
@@ -48,6 +46,15 @@ spec:
         - name: config-volume
           configMap:
             name: local-zfs-provisioner-config
+      tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/master
+        operator: Exists
+      - effect: NoSchedule
+        key: node.kubernetes.io/not-ready
+        operator: Exists
 ---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
