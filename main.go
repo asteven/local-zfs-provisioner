@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/jawher/mow.cli"
-	"github.com/pkg/errors"
 	zfs "github.com/mistifyio/go-zfs"
+	"github.com/pkg/errors"
 
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -184,6 +185,19 @@ func main() {
 				//	logrus.Fatalf("Failed to mount dataset %v at %v: %v", *datasetName, *mountPoint, err)
 				//  return nil, err
 				//}
+
+				// Ensure safe permissions on the directory containing the mount point.
+				// This allows us to create the actual mountpoint with the otherwise
+				// insecure mode 0777 which again ensures that the pod owning the volume
+				// can write there in any case.
+				parentMountPoint := filepath.Dir(*mountPoint)
+				if err := os.Chmod(parentMountPoint, 0700); err != nil {
+					logrus.Fatalf("Failed to set permissions on base mountpoint %v: %v", parentMountPoint, err)
+				}
+				// Ensure the dataset is writable by the pod.
+				if err := os.Chmod(*mountPoint, 0777); err != nil {
+					logrus.Fatalf("Failed to set permissions on mountpoint %v: %v", *mountPoint, err)
+				}
 
 				logrus.Infof("Created and mounted dataset %v at %v", *datasetName, *mountPoint)
 			}
