@@ -28,7 +28,7 @@ const (
 
 var (
 	CleanupTimeoutCounts    = 120
-	ConfigFileCheckInterval = 5 * time.Second
+	ConfigFileCheckInterval = 10 * time.Second
 )
 
 type LocalZFSProvisioner struct {
@@ -90,6 +90,7 @@ func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, confi
 }
 
 func (p *LocalZFSProvisioner) refreshConfig() error {
+	logrus.Debugf("refreshConfig")
 	p.configMutex.Lock()
 	defer p.configMutex.Unlock()
 
