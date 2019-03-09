@@ -1,5 +1,5 @@
 hash: 05e17a243c9f52c3c3a389872a74a160a48e58e3d965478d652fb7dd3a2fc545
-updated: 2019-02-07T11:38:21.127796893+01:00
+updated: 2019-03-08T23:53:11.966745605+01:00
 imports:
 - name: github.com/beorn7/perks
   version: 3a771d992973f24aa725d07868b467d1ddfceafb
@@ -29,7 +29,7 @@ imports:
 - name: github.com/google/btree
   version: 7d79101e329e5a3adf994758c578dab82b90c017
 - name: github.com/google/gofuzz
-  version: 24818f796faf91cd76ec7bddd72458fbced7a6c1
+  version: 44d81051d367757e1c7c6a5a86423ece9afcf63c
 - name: github.com/googleapis/gnostic
   version: 0c5108395e2debce0d731cf0287ddf7242066aba
   subpackages:
@@ -45,7 +45,7 @@ imports:
   subpackages:
   - simplelru
 - name: github.com/jawher/mow.cli
-  version: 2f22195f169da29d54624afd9eb83ada5c9e4ee9
+  version: d9c41c7c90d99b076732ee72a657577128d610da
   subpackages:
   - internal/container
   - internal/flow
@@ -57,9 +57,9 @@ imports:
 - name: github.com/json-iterator/go
   version: ab8a2e0c74be9d3be70b3184d9acc634935ded82
 - name: github.com/konsorten/go-windows-terminal-sequences
-  version: 5c8c8bd35d3832f5d134ae1e1e375b69a4d25242
+  version: f55edac94c9bbba5d6182a4be46d86a2c9b5b50e
 - name: github.com/kubernetes-sigs/sig-storage-lib-external-provisioner
-  version: 6719832875823b66ab4bd0c76e425f659a87e7c5
+  version: 0fcd2a19e047b6a1e9203b8ed3511ed8679b23f4
   subpackages:
   - controller/metrics
   - util
@@ -68,7 +68,7 @@ imports:
   subpackages:
   - pbutil
 - name: github.com/miekg/dns
-  version: 164b22ef9acc6ebfaef7169ab51caaef67390823
+  version: e838e1e3ce8e1a610a05c097960d2ede0b0a6dde
 - name: github.com/mistifyio/go-zfs
   version: cdc0f941c4d0e0e94d85348285568d921891e138
 - name: github.com/modern-go/concurrent
@@ -82,7 +82,7 @@ imports:
 - name: github.com/pkg/errors
   version: ba968bfe8b2f7e042a574c888954fccecfa385b4
 - name: github.com/prometheus/client_golang
-  version: 7190de1ef27a67a600698247a86db923cd5b8127
+  version: c5e14697eaa7af985b2e326f1f5ed50bacb75c06
   subpackages:
   - prometheus
   - prometheus/internal
@@ -92,15 +92,16 @@ imports:
   subpackages:
   - go
 - name: github.com/prometheus/common
-  version: cfeb6f9992ffa54aaa4f2170ade4067ee478b250
+  version: bf857faf208676b0294bd49959aa34c8d98163ed
   subpackages:
   - expfmt
   - internal/bitbucket.org/ww/goautoneg
   - model
 - name: github.com/prometheus/procfs
-  version: 488faf799f863e27e50c516468f76ae8f1da20a5
+  version: d0f344d83b0c80a1bc03b547a2374a9ec6711144
   subpackages:
   - internal/util
+  - iostats
   - nfs
   - xfs
 - name: github.com/Sirupsen/logrus
@@ -148,7 +149,7 @@ imports:
   subpackages:
   - rate
 - name: google.golang.org/appengine
-  version: 2d2298565d5a399bdfec98dbc259d6393e3cf8ba
+  version: 54a98f90d1c46b7731eb8fb305d2a321c30ef610
   subpackages:
   - internal
   - internal/base
@@ -197,7 +198,7 @@ imports:
   - storage/v1alpha1
   - storage/v1beta1
 - name: k8s.io/apimachinery
-  version: 4b4ea28f279089e0cfafcc2d47479a5bd1a0964f
+  version: 2b1284ed4c93a43499e781493253e2ac5959c4fd
   subpackages:
   - pkg/api/errors
   - pkg/api/meta
@@ -381,21 +382,13 @@ imports:
 - name: k8s.io/klog
   version: 8139d8cb77af419532b33dfa7dd09fbc5f1d344f
 - name: k8s.io/kube-openapi
-  version: ced9eb3070a5f1c548ef46e8dfe2a97c208d9f03
+  version: c59034cc13d587f5ef4e85ca0ade0c1866ae8e1d
   subpackages:
   - pkg/util/proto
 - name: sigs.k8s.io/sig-storage-lib-external-provisioner
   version: 99ac517d9c047238af8b8a6c411084b9f7888a87
   subpackages:
   - controller
-- name: sigs.k8s.io/structured-merge-diff
-  version: e5e029740eb81ee0217ecf9d950c25a0eeb9688a
-  subpackages:
-  - fieldpath
-  - merge
-  - schema
-  - typed
-  - value
 - name: sigs.k8s.io/yaml
   version: fd68e9863619f6ec2fdd8625fe1f02e7c877e480
 testImports: []
