@@ -10,13 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
-	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 )
 
 const (
@@ -156,7 +156,7 @@ func (p *LocalZFSProvisioner) getNodeDatasetMap(nodeName string) (*NodeDatasetMa
 }
 
 // Provision creates a storage asset and returns a PV object representing it.
-func (p *LocalZFSProvisioner) Provision(options pvController.VolumeOptions) (*v1.PersistentVolume, error) {
+func (p *LocalZFSProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
 	logrus.Infof("Provisioning volume %v", options.PVName)
 	node := options.SelectedNode
 	if node == nil {

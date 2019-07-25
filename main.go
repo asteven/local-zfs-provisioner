@@ -7,14 +7,14 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/jawher/mow.cli"
 	zfs "github.com/mistifyio/go-zfs"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	pvController "sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
+	"sigs.k8s.io/sig-storage-lib-external-provisioner/controller"
 )
 
 var (
@@ -70,7 +70,7 @@ func startController(configFile string, datasetMountDir string, provisionerName 
 	if err != nil {
 		return err
 	}
-	pc := pvController.NewProvisionController(
+	pc := controller.NewProvisionController(
 		kubeClient,
 		provisionerName,
 		provisioner,
