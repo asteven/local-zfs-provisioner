@@ -21,7 +21,7 @@ import (
 
 const (
 	KeyNode     = "kubernetes.io/hostname"
-	DockerImage = "asteven/local-zfs-provisioner:v0.0.1"
+	DockerImage = "asteven/local-zfs-provisioner:v0.0.3"
 
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
 )

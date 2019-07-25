@@ -16,7 +16,7 @@ IMG_NAMESPACE = asteven
 IMG_NAME = local-zfs-provisioner
 IMG_FQNAME = $(IMG_NAMESPACE)/$(IMG_NAME)
 IMG_TAG = latest
-IMG_VERSION = v0.0.2
+IMG_VERSION = v0.0.3
 
 
 .PHONY: gofmt container push-container clean
