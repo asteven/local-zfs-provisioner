@@ -357,7 +357,7 @@ func (p *LocalZFSProvisioner) runCreateDatasetPod(
 
 	args = append(args, datasetName, mountPoint)
 
-	podName := nodeName + "-" + pvName + "-create"
+	podName := pvName + "-create"
 	err = p.runDatasetPod(nodeName, podName, args)
 	if err != nil {
 		return err
@@ -383,7 +383,7 @@ func (p *LocalZFSProvisioner) runDeleteDatasetPod(
 		datasetName, mountPoint,
 	}
 
-	podName := nodeName + "-" + pvName + "-delete"
+	podName := pvName + "-delete"
 	return p.runDatasetPod(nodeName, podName, args)
 }
 
