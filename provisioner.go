@@ -156,7 +156,7 @@ func (p *LocalZFSProvisioner) getNodeDatasetMap(nodeName string) (*NodeDatasetMa
 }
 
 // Provision creates a storage asset and returns a PV object representing it.
-func (p *LocalZFSProvisioner) Provision(options controller.VolumeOptions) (*v1.PersistentVolume, error) {
+func (p *LocalZFSProvisioner) Provision(options controller.ProvisionOptions) (*v1.PersistentVolume, error) {
 	logrus.Infof("Provisioning volume %v", options.PVName)
 	node := options.SelectedNode
 	if node == nil {
@@ -206,7 +206,7 @@ func (p *LocalZFSProvisioner) Provision(options controller.VolumeOptions) (*v1.P
 			},
 		},
 		Spec: v1.PersistentVolumeSpec{
-			PersistentVolumeReclaimPolicy: options.PersistentVolumeReclaimPolicy,
+			PersistentVolumeReclaimPolicy: *options.StorageClass.ReclaimPolicy,
 			AccessModes:                   pvc.Spec.AccessModes,
 			VolumeMode:                    &fs,
 			Capacity: v1.ResourceList{
