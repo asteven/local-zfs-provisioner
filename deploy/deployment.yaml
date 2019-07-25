@@ -22,7 +22,7 @@ spec:
       serviceAccount: local-zfs-provisioner
       containers:
       - name: local-zfs-provisioner
-        image: asteven/local-zfs-provisioner:v0.0.1
+        image: asteven/local-zfs-provisioner:v0.0.2
         imagePullPolicy: Always
         args:
         - --debug
