@@ -22,6 +22,7 @@ var (
 	DefaultProvisionerName = "asteven/local-zfs"
 	DefaultNamespace       = "kube-system"
 	DefaultDatasetMountDir = "/var/lib/local-zfs-provisioner"
+	DefaultContainerImage  = "asteven/local-zfs-provisioner"
 )
 
 func RegisterShutdownChannel(done chan struct{}) {
@@ -61,12 +62,17 @@ func startController(configFile string, datasetMountDir string, provisionerName 
 		return fmt.Errorf("NODE_NAME environment variable not set")
 	}
 
+	containerImage := os.Getenv("CONTAINER_IMAGE")
+	if containerImage == "" {
+		containerImage = "DefaultContainerImage"
+	}
+
 	fmt.Println("configFile: ", configFile)
 	fmt.Println("datasetMountDir: ", datasetMountDir)
 	fmt.Println("provisionerName: ", provisionerName)
 	fmt.Println("namespace: ", namespace)
 
-	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, datasetMountDir, provisionerName, namespace, nodeName)
+	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, datasetMountDir, provisionerName, namespace, nodeName, containerImage)
 	if err != nil {
 		return err
 	}

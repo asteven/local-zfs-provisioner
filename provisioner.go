@@ -20,9 +20,7 @@ import (
 )
 
 const (
-	KeyNode     = "kubernetes.io/hostname"
-	DockerImage = "asteven/local-zfs-provisioner:v0.0.3"
-
+	KeyNode					  = "kubernetes.io/hostname"
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
 )
 
@@ -38,6 +36,7 @@ type LocalZFSProvisioner struct {
 	provisionerName string
 	namespace       string
 	nodeName        string
+	containerImage	string
 
 	datasetNameAnnotation string
 
@@ -64,7 +63,9 @@ type Config struct {
 	NodeDatasetMap map[string]*NodeDatasetMap
 }
 
-func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile string, datasetMountDir string, provisionerName string, namespace string, nodeName string) (*LocalZFSProvisioner, error) {
+func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile string,
+		datasetMountDir string, provisionerName string, namespace string, nodeName string,
+		containerImage string) (*LocalZFSProvisioner, error) {
 	p := &LocalZFSProvisioner{
 		stopCh: stopCh,
 
@@ -73,6 +74,7 @@ func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, confi
 		provisionerName: provisionerName,
 		namespace:       namespace,
 		nodeName:        nodeName,
+		containerImage:  containerImage,
 
 		datasetNameAnnotation: provisionerName + ".datasetName",
 
@@ -411,7 +413,7 @@ func (p *LocalZFSProvisioner) runDatasetPod(nodeName string, podName string, arg
 			Containers: []v1.Container{
 				{
 					Name:    podName,
-					Image:   DockerImage,
+					Image:   p.containerImage,
 					Command: []string{"/local-zfs-provisioner"},
 					Args:    args,
 					SecurityContext: &v1.SecurityContext{
