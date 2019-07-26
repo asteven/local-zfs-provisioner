@@ -71,6 +71,7 @@ func startController(configFile string, datasetMountDir string, provisionerName 
 	fmt.Println("datasetMountDir: ", datasetMountDir)
 	fmt.Println("provisionerName: ", provisionerName)
 	fmt.Println("namespace: ", namespace)
+	fmt.Println("containerImage: ", containerImage)
 
 	provisioner, err := NewProvisioner(stopCh, kubeClient, configFile, datasetMountDir, provisionerName, namespace, nodeName, containerImage)
 	if err != nil {
