@@ -15,8 +15,7 @@
 IMG_NAMESPACE = asteven
 IMG_NAME = local-zfs-provisioner
 IMG_FQNAME = $(IMG_NAMESPACE)/$(IMG_NAME)
-IMG_TAG = latest
-IMG_VERSION = v0.0.3
+IMG_VERSION = 0.0.4
 
 
 .PHONY: gofmt container push-container clean
@@ -39,6 +38,8 @@ _push-container: container
 
 push:
 	sudo docker push $(IMG_FQNAME):$(IMG_VERSION)
+	# Also update :latest
+	sudo docker push $(IMG_FQNAME)
 
 clean:
 	#go clean -r -x
