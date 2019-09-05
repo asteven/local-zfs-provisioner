@@ -198,7 +198,6 @@ func (p *LocalZFSProvisioner) Provision(options controller.ProvisionOptions) (*v
 	logrus.Infof("Created volume %v at %v:%v", pvName, node.Name, mountPoint)
 
 	fs := v1.PersistentVolumeFilesystem
-	hostPathType := v1.HostPathDirectory
 
 	pv := &v1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
@@ -215,26 +214,8 @@ func (p *LocalZFSProvisioner) Provision(options controller.ProvisionOptions) (*v
 				v1.ResourceName(v1.ResourceStorage): pvc.Spec.Resources.Requests[v1.ResourceName(v1.ResourceStorage)],
 			},
 			PersistentVolumeSource: v1.PersistentVolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
+				Local: &v1.LocalVolumeSource{
 					Path: mountPoint,
-					Type: &hostPathType,
-				},
-			},
-			NodeAffinity: &v1.VolumeNodeAffinity{
-				Required: &v1.NodeSelector{
-					NodeSelectorTerms: []v1.NodeSelectorTerm{
-						{
-							MatchExpressions: []v1.NodeSelectorRequirement{
-								{
-									Key:      KeyNode,
-									Operator: v1.NodeSelectorOpIn,
-									Values: []string{
-										node.Name,
-									},
-								},
-							},
-						},
-					},
 				},
 			},
 		},
@@ -296,11 +277,11 @@ func (p *LocalZFSProvisioner) Delete(pv *v1.PersistentVolume) (err error) {
 }
 
 func (p *LocalZFSProvisioner) getNodeAndMountPointForPV(pv *v1.PersistentVolume) (nodeName, mountPoint string, err error) {
-	hostPath := pv.Spec.PersistentVolumeSource.HostPath
-	if hostPath == nil {
-		return "", "", fmt.Errorf("no HostPath set")
+	local := pv.Spec.PersistentVolumeSource.Local
+	if local == nil {
+		return "", "", fmt.Errorf("no Local set")
 	}
-	mountPoint = hostPath.Path
+	mountPoint = local.Path
 
 	nodeAffinity := pv.Spec.NodeAffinity
 	if nodeAffinity == nil {
@@ -399,7 +380,6 @@ func (p *LocalZFSProvisioner) runDatasetPod(nodeName string, podName string, arg
 	}
 
 	privileged := true
-	hostPathType := v1.HostPathDirectoryOrCreate
 	mountPropagation := v1.MountPropagationBidirectional
 
 	datasetPod := &v1.Pod{
@@ -433,9 +413,8 @@ func (p *LocalZFSProvisioner) runDatasetPod(nodeName string, podName string, arg
 				{
 					Name: "dataset-mount-dir",
 					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
+						Local: &v1.LocalVolumeSource{
 							Path: p.datasetMountDir,
-							Type: &hostPathType,
 						},
 					},
 				},
