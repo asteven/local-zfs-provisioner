@@ -218,6 +218,21 @@ func (p *LocalZFSProvisioner) Provision(options controller.ProvisionOptions) (*v
 					Path: mountPoint,
 				},
 			},
+			NodeAffinity: &v1.VolumeNodeAffinity{
+				Required: &v1.NodeSelector{
+					NodeSelectorTerms: []v1.NodeSelectorTerm{
+						{
+							MatchExpressions: []v1.NodeSelectorRequirement{
+								{
+									Key:      KeyNode,
+									Operator: v1.NodeSelectorOpIn,
+									Values:   []string{node.Name},
+								},
+							},
+						},
+					},
+				},
+			},
 		},
 	}
 
@@ -380,6 +395,7 @@ func (p *LocalZFSProvisioner) runDatasetPod(nodeName string, podName string, arg
 	}
 
 	privileged := true
+	hostPathType := v1.HostPathDirectoryOrCreate
 	mountPropagation := v1.MountPropagationBidirectional
 
 	datasetPod := &v1.Pod{
@@ -413,8 +429,9 @@ func (p *LocalZFSProvisioner) runDatasetPod(nodeName string, podName string, arg
 				{
 					Name: "dataset-mount-dir",
 					VolumeSource: v1.VolumeSource{
-						Local: &v1.LocalVolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
 							Path: p.datasetMountDir,
+							Type: &hostPathType,
 						},
 					},
 				},
