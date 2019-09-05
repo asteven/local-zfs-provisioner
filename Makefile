@@ -32,6 +32,7 @@ local-zfs-provisioner:
 
 container: local-zfs-provisioner
 	sudo docker build -t $(IMG_FQNAME):$(IMG_VERSION) .
+	sudo docker tag $(IMG_FQNAME):$(IMG_VERSION) $(IMG_FQNAME):latest
 
 _push-container: container
 	sudo docker push $(IMG_FQNAME):$(IMG_VERSION)
@@ -39,7 +40,7 @@ _push-container: container
 push:
 	sudo docker push $(IMG_FQNAME):$(IMG_VERSION)
 	# Also update :latest
-	sudo docker push $(IMG_FQNAME)
+	sudo docker push $(IMG_FQNAME):latest
 
 clean:
 	#go clean -r -x
