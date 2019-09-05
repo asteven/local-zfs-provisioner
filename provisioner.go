@@ -20,7 +20,7 @@ import (
 )
 
 const (
-	KeyNode					  = "kubernetes.io/hostname"
+	KeyNode                   = "kubernetes.io/hostname"
 	NodeDefaultNonListedNodes = "DEFAULT_PATH_FOR_NON_LISTED_NODES"
 )
 
@@ -36,7 +36,7 @@ type LocalZFSProvisioner struct {
 	provisionerName string
 	namespace       string
 	nodeName        string
-	containerImage	string
+	containerImage  string
 
 	datasetNameAnnotation string
 
@@ -64,8 +64,8 @@ type Config struct {
 }
 
 func NewProvisioner(stopCh chan struct{}, kubeClient *clientset.Clientset, configFile string,
-		datasetMountDir string, provisionerName string, namespace string, nodeName string,
-		containerImage string) (*LocalZFSProvisioner, error) {
+	datasetMountDir string, provisionerName string, namespace string, nodeName string,
+	containerImage string) (*LocalZFSProvisioner, error) {
 	p := &LocalZFSProvisioner{
 		stopCh: stopCh,
 
