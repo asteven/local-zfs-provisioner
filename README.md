@@ -1,24 +1,22 @@
 # Local ZFS Provisioner
 
-This work is based on Ranchers [Local Path Provisioner](https://github.com/rancher/local-path-provisioner).
+This work is initially based on Ranchers [Local Path Provisioner](https://github.com/rancher/local-path-provisioner).
 The original code was changed to work with ZFS datasets instead of local directories.
 
 
 ## Overview
 
-Local ZFS Provisioner provides a way for Kubernetes to utilize the local
-storage on each node. Based on the user configuration, the Local ZFS Provisioner
-will create `hostPath` based persistent volumes on the nodes automatically.
-It utilizes the features introduced by Kubernetes [Local Persistent Volume feature](https://kubernetes.io/blog/2018/04/13/local-persistent-volumes-beta/),
-but it is much simpler to use then the built-in `local` volume feature in Kubernetes.
+Local ZFS Provisioner is a dynamic provisioner for [Local Persistent Volumes](https://kubernetes.io/docs/concepts/storage/volumes/#local).
+It provides a way for Kubernetes to utilize the local storage on each node.
 
-The ZFS Provisioner is implemented as a hostPath provisioner that shedules pods
+The ZFS Provisioner is implemented as a Local volume provisioner that shedules pods
 targeted at specific nodes to provision or delete datasets to fullfill the requested
 Persistent Volume Claims. It is typically deployed as a Kubernetes Deployment.
 
 
 ## Requirement
-Kubernetes v1.12+.
+
+Kubernetes v1.14+.
 
 ## Deployment
 
@@ -42,11 +40,11 @@ kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner
 
 ## Usage
 
-Create a `hostPath` backed Persistent Volume Claim and a pod that uses it:
+Create a Persistent Volume Claim and a pod that uses it:
 
 ```
-kubectl create -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pvc.yaml
-kubectl create -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
+kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pvc.yaml
+kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
 ```
 
 You should see that the PV has been created:
@@ -88,7 +86,7 @@ kubectl delete -f https://raw.githubusercontent.com/asteven/local-zfs-provisione
 After confirming that the pod is gone, recreated it:
 
 ```
-kubectl create -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
+kubectl apply -f https://raw.githubusercontent.com/asteven/local-zfs-provisioner/master/example/pod.yaml
 ```
 
 Check the volume content:
@@ -137,19 +135,23 @@ data:
 ```
 
 ### Definition
+
 `nodeDatasetMap` is the place where the user can customize where to store the data on each node.
 1. If a node is not listed in the `nodeDatasetMap` map, and Kubernetes wants to create volume on it, the dataset specified in `DEFAULT_PATH_FOR_NON_LISTED_NODES` will be used for provisioning.
 2. If a node is listed in the `nodeDatasetMap` map, the specified `dataset` will be used for provisioning.
 
+
 ### Rules
+
 The configuration must obey following rules:
 1. `config.json` must be a valid json file.
 2. A dataset name can not start with `/`.
 3. No duplicate node allowed.
 
+
 ### Reloading
 
-The provisioner supports automatic reloading of configuration. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-zfs-provisioner-config`.
+The provisioner supports automatic configuration reloading. Users can change the configuration using `kubectl apply` or `kubectl edit` with config map `local-zfs-provisioner-config`.
 
 When the provisioner detects configuration changes, it will try to load the new configuration.
 
@@ -157,7 +159,7 @@ If the reload fails due to some reason, the provisioner will report error in the
 
 ## Uninstall
 
-Before uninstallation, make sure that the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PV with StorageClass `local-zfs`.
+Before uninstallation, make sure that the PVs created by the provisioner have already been deleted. Use `kubectl get pv` and make sure no PVs with StorageClass `local-zfs` exist.
 
 To uninstall, execute:
 
