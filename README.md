@@ -1,3 +1,7 @@
+This repo is deprecated in favor of [zfs-provisioner](https://github.com/asteven/zfs-provisioner) which basically does the same thing.
+But is written in python, is much simpler to hack on and extend as it has no dependencies on things like sig-storage-lib-external-provisioner.
+
+
 # Local ZFS Provisioner
 
 This work is initially based on Ranchers [Local Path Provisioner](https://github.com/rancher/local-path-provisioner).
